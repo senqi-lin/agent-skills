@@ -185,4 +185,6 @@ npx cpp-reading-card card.json                     # 或用 CLI（需 npm 发布
 
 ## License
 
-MIT。示例里的 ORB-SLAM3 代码片段版权归原作者（GPLv3），本仓库只在构建期读取、不重新分发源码。
+- **工具本体**（`bin/` `assets/` `schema/` `SKILL.md` `tools/`）：MIT，见 [LICENSE](LICENSE)。
+- **`examples/`**：包含 ORB-SLAM3 的源码片段（`Tracking.cc`，GPLv3，© the ORB-SLAM3 authors），按 **GPLv3** 分发。片段仅用于讲解，工具本体在构建期读取源码、不捆绑任何第三方源码。
+- 你自己用这个工具生成的卡片：源码片段归原项目，按原项目许可处理。
