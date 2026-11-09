@@ -94,8 +94,8 @@ C:\Users\<你>\.agents\skills\<skill>\SKILL.md      # Windows
 装：
 
 ```sh
-npx skills add senqi-lin/cpp-reading-card -g   # 发布后：从 GitHub 装
-npx skills add . -g                          # 还没发布：从本地目录装
+npx skills add senqi-lin/agent-skills@cpp-reading-card -g   # 从合集仓库装这一个
+npx skills add . -g                                       # 从本地目录装
 ```
 
 `-g` = 用户级；不加就装进当前项目（`.agents/skills/`）。装完它会顺带给 Claude Code / Codex / Copilot / OpenCode 建好链接，不用手动复制。
@@ -174,8 +174,8 @@ npm publish
 发布后别人两条命令任选：
 
 ```sh
-npx skills add senqi-lin/cpp-reading-card -g    # 装 skill（进任意 agent）
-npx cpp-reading-card card.json                 # 或用 CLI（需 npm 发布过）
+npx skills add senqi-lin/agent-skills@cpp-reading-card -g    # 装 skill（进任意 agent）
+npx cpp-reading-card card.json                              # 或用 CLI（需 npm 发布过）
 ```
 
 两个实测结论，省得你纠结仓库结构：
