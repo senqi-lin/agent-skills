@@ -1,0 +1,367 @@
+{
+  "meta": {
+    "pageTitle": "TrackWithMotionModel() · 运动模型跟踪 · ORB-SLAM3",
+    "eyebrow": "ORB-SLAM3 · 单目 · 正常跟踪的第二条分支",
+    "returnType": "bool",
+    "signature": "Tracking::TrackWithMotionModel()",
+    "summary": "一句话：<b>用「上一帧是怎么动的」猜出这一帧的位姿，再把上一帧的地图点投影到猜出来的位置附近捞回来。</b>它不查词袋、不碰关键帧，只信速度。",
+    "badges": [
+      { "kind": "k", "text": "src/Tracking.cc:2854–2947" },
+      { "kind": "r", "text": "显式输入：无（void）" },
+      { "kind": "w", "text": "显式输出：bool" },
+      { "kind": "g", "text": "前置条件：mVelocity 已经有值" }
+    ],
+    "related": [
+      { "href": "01-track-reference-keyframe.html", "label": "← 01 参考帧匹配 TrackReferenceKeyFrame()" }
+    ],
+    "footer": "行号基于 ORB-SLAM3 的 src/Tracking.cc；本页由 <span class=\"mono\">cpp-reading-card</span> 从一张 JSON 卡片渲染而成，双击即可离线打开。"
+  },
+  "sections": [
+    {
+      "kind": "invariant",
+      "title": "先记住这条分叉：双目帧是两段索引拼起来的",
+      "sub": "第 10 步里的 <code class='mono'>i &lt; mCurrentFrame.Nleft</code> 不是随手写的。双目 / RGBD 帧把右目的特征接在左目后面，同一个 <code class='mono'>i</code> 落在哪段，决定该清哪个「在视野中」标志。",
+      "rows": [
+        {
+          "label": "mvKeysUn[i]",
+          "cells": [
+            "左 0", "左 1", "左 2",
+            { "text": "Nleft", "empty": true },
+            "右 0", "右 1", "右 2", "…"
+          ]
+        },
+        {
+          "label": "mvpMapPoints[i]",
+          "cells": [
+            "MP17", "MP42", "MP88",
+            { "empty": true },
+            "MP05", { "empty": true }, "MP11", "…"
+          ]
+        },
+        {
+          "label": "pMP-&gt;标志位",
+          "cells": [
+            { "text": "view", "hi": true }, { "text": "view", "hi": true }, { "text": "view", "hi": true },
+            { "empty": true },
+            { "text": "viewR", "hi": true }, { "text": "viewR", "hi": true }, { "text": "viewR", "hi": true }, "…"
+          ]
+        }
+      ],
+      "note": "左半段（<code class='mono'>i &lt; Nleft</code>）对应 <code class='mono'>mbTrackInView</code>，右半段对应 <code class='mono'>mbTrackInViewR</code>，图里缩写成 view / viewR。单目时 <code class='mono'>Nleft == N</code>，右半段长度为 0，只有 <code class='mono'>mbTrackInView</code> 会被写。写错分支不会崩，只会让这个点在下一帧的 <code class='mono'>SearchLocalPoints</code> 里被当成「在视野外」而跳过 —— 静默的行为退化，不是崩溃。这类 bug 光读代码基本抓不到，只能靠<strong>先记住数组形状</strong>。"
+    },
+    {
+      "kind": "lanes",
+      "title": "调用链 × 隐式数据流",
+      "sub": "11 步。左边读、右边写，<b>读/写两列才是这个函数的真实签名</b>。带底色的是门（会提前 return 或改变后面所有判断）。",
+      "steps": [
+        {
+          "n": 1,
+          "call": "ORBmatcher matcher(<b>0.9</b>, <b>true</b>)",
+          "body": "比率阈值比参考帧分支的 0.7 松得多：这里的位置已经被预测位姿约束住，不需要描述子那么严格；<span class='code'>true</span> = 方向一致性检查仍然开着。",
+          "tag": "栈对象，析构无副作用",
+          "read": "<span class='dim'>无</span>",
+          "write": "<span class='dim'>无</span>"
+        },
+        {
+          "n": 2,
+          "call": "UpdateLastFrame()",
+          "body": "做两件事：① 用上一帧的参考 KF 把上一帧位姿修正成 <span class='code'>Tlr·Tref</span>；② 定位 / 纯定位模式下给上一帧补一批「视觉里程计点」。<br><b>所以下一步读到的上一帧位姿，是刚刚被改过的。</b>",
+          "tag": "void 无返回",
+          "read": "<code>mpLastKeyFrame</code><div class='dim'>→ 上一帧相对 KF 的 Tlr</div>",
+          "write": "<code>mLastFrame.mTcw</code><br><code>mLastFrame.mvpMapPoints</code><div class='dim'>仅定位模式追加 VO 点</div>"
+        },
+        {
+          "n": 3,
+          "kind": "gate",
+          "call": "if (mpAtlas-&gt;isImuInitialized() &amp;&amp; mnId &gt; mnLastRelocFrameId+mnFramesToResetIMU)<br>{ PredictStateIMU(); <b>return true</b>; }",
+          "body": "门 #0：IMU 已初始化且不在重定位后的复位窗口里 → 位姿直接由预积分推进，<b>一个特征都不匹配</b>，而且照样返回成功。这是整段函数最大的分叉，读代码时最容易漏。",
+          "tag": "return true（没有任何匹配）",
+          "tagKind": "ret",
+          "read": "<code>mpAtlas</code><div class='dim'>isImuInitialized()</div><code>mCurrentFrame.mnId</code>",
+          "write": "<code>mCurrentFrame.mTcw</code><div class='dim'>由 IMU 积分写入</div><code>mCurrentFrame.mVelocity</code>"
+        },
+        {
+          "n": 4,
+          "call": "mCurrentFrame.<b>SetPose</b>(mVelocity * mLastFrame.GetPose());",
+          "body": "<span class='code'>mVelocity</span> 是「上一帧 → 当前帧」的相对位姿，左乘上一帧位姿 = 本帧预测。<br>这一步<b>没有任何观测参与</b> —— 猜错了，后面就全靠大窗口硬搜，也就是这套方法最脆弱的地方。",
+          "tag": "隐式契约：mVelocity 来自上一次成功跟踪",
+          "read": "<code>mVelocity</code><div class='dim'>Sophus::SE3f，Track() 末尾更新</div><code>mLastFrame.GetPose()</code>",
+          "write": "<code>mCurrentFrame.mTcw</code>"
+        },
+        {
+          "n": 5,
+          "call": "fill(mvpMapPoints.begin(), mvpMapPoints.end(), NULL);",
+          "body": "清空上一帧残留的匹配。注意和参考帧分支的差别：那边是 <span class='code'>= vpMapPointMatches</span> 整体换数组，这边是<b>原地清同一块内存</b>，长度始终是 N。",
+          "tag": "原地写，长度不变",
+          "read": "<span class='dim'>无</span>",
+          "write": "<code>mCurrentFrame.mvpMapPoints</code>"
+        },
+        {
+          "n": 6,
+          "call": "int th = (mSensor==STEREO) ? <b>7</b> : <b>15</b>;<br>matcher.<b>SearchByProjection</b>(mCurrentFrame, mLastFrame, th, 单目?true:false)",
+          "body": "把上一帧的点按预测位姿投影到当前帧，在半径 th 像素的窗口里找描述子最像的特征。最后一个参数 = 单目时放宽「远点」检查（单目没法用深度先验）。",
+          "tag": "int nmatches",
+          "read": "<code>mLastFrame.mvpMapPoints</code><br><code>mCurrentFrame.mvKeysUn</code><div class='dim'>+ 上一步的预测位姿</div>",
+          "write": "<code>mCurrentFrame.mvpMapPoints</code>"
+        },
+        {
+          "n": 7,
+          "kind": "gate",
+          "call": "if (nmatches &lt; <b>20</b>) { 清空; SearchByProjection(..., <b>2*th</b>, ...); }",
+          "body": "第一次没够 20 个，把窗口半径<b>翻倍</b>再搜一遍。这是对「预测不准」的补救 —— 也意味着错配风险随之翻倍。",
+          "tag": "门 #1：20（宽窗重试）",
+          "read": "<code>nmatches</code>",
+          "write": "<code>mCurrentFrame.mvpMapPoints</code><div class='dim'>再次整体清空</div><code>nmatches</code><div class='dim'>被覆盖</div>"
+        },
+        {
+          "n": 8,
+          "kind": "gate",
+          "call": "if (nmatches &lt; <b>20</b>) { IMU ? return true : return false; }",
+          "body": "宽窗之后还是不到 20 → 放弃匹配。<b>IMU 模式仍然 return true</b>（位姿交给后端融合），纯视觉返回 false，上层退回参考帧匹配（Tracking.cc:1955）。",
+          "tag": "门 #2：20（判死）",
+          "read": "<code>nmatches</code><br><code>mSensor</code>",
+          "write": "<code>return false</code><div class='dim'>mvpMapPoints 保持清空后的状态</div>"
+        },
+        {
+          "n": 9,
+          "kind": "opt",
+          "call": "Optimizer::<b>PoseOptimization</b>(&amp;mCurrentFrame)",
+          "body": "和参考帧分支调用的是同一个优化器：单位姿顶点、地图点当常量、Huber 核、多轮迭代把大残差观测标成外点。",
+          "tag": "返回值被丢弃",
+          "tagKind": "ret",
+          "read": "<code>mvpMapPoints</code><br><code>mvKeysUn</code><br><code>mvInvLevelSigma2</code>",
+          "write": "<code>mCurrentFrame.mTcw</code><div class='dim'>覆盖写</div><code>mvbOutlier[i]</code>"
+        },
+        {
+          "n": 10,
+          "call": "for i in [0,N): 清外点 + 计数",
+          "body": "外点：槽位置 NULL、清 <span class='code'>mvbOutlier</span>、<b>按 i 落在左/右半段</b>分别清 <span class='code'>mbTrackInView</span> / <span class='code'>mbTrackInViewR</span>、记 <span class='code'>mnLastFrameSeen</span>，然后 <span class='code'>nmatches--</span>。<br>关键：<b>nmatches 在这里被改小了</b>，后面 return 用的已经不是「匹配数」，而是「扣掉外点后还剩多少」。",
+          "tag": "副作用跨出本函数：写到全局 MapPoint",
+          "read": "<code>mvpMapPoints[i]</code><br><code>mvbOutlier[i]</code><br><code>pMP-&gt;Observations()</code>",
+          "write": "<code>mvpMapPoints[i] = NULL</code><br><code>mvbOutlier[i] = false</code><br><code>pMP-&gt;mbTrackInView[R]</code><br><code>pMP-&gt;mnLastFrameSeen</code><div class='dim'>nmatches-- / nmatchesMap++</div>"
+        },
+        {
+          "n": 11,
+          "kind": "gate",
+          "call": "if (mbOnlyTracking) { mbVO = nmatchesMap &lt; <b>10</b>; return nmatches &gt; <b>20</b>; }<br>return IMU ? true : nmatchesMap &gt;= <b>10</b>;",
+          "body": "三种语义挤在同一个 bool 里：纯定位模式回答「这一帧算 VO 还是算地图」，IMU 模式永远回答 true，普通模式才回答「跟住了没有」。<b>同一个返回值，三种含义。</b>",
+          "tag": "门 #3：10 / 20",
+          "read": "<code>nmatches</code><br><code>nmatchesMap</code><br><code>mbOnlyTracking</code>",
+          "write": "<code>mbVO</code><div class='dim'>纯定位模式的对外状态</div><code>return bool</code>"
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "title": "对象与类型：谁拥有、活多久、能不能改",
+      "sub": "这一页最容易被忽略的一点：<b>「上一帧」不是只读的</b> —— 第 2 步就在改它。",
+      "cols": [
+        { "label": "标识符", "width": "21%" },
+        { "label": "声明", "width": "22%" },
+        { "label": "实际形态", "width": "27%" },
+        { "label": "所有权 · 生命周期" }
+      ],
+      "rows": [
+        [
+          "<code>matcher</code>",
+          "<code>ORBmatcher</code> 栈对象",
+          "两个配置字段（比率 0.9、方向检查 true），无状态",
+          { "cls": "own", "html": "函数结束即析构，无副作用。" }
+        ],
+        [
+          "<code>mLastFrame</code>",
+          "<code>Frame</code> 值成员",
+          "每帧一整份拷贝；第 2 步刚把它的位姿和点数组改过",
+          { "cls": "own", "html": "Tracking 独占。但它<b>不是只读输入</b> —— 把「读上一帧」当成纯读，是读这段代码最常见的误解。" }
+        ],
+        [
+          "<code>mVelocity</code>",
+          "<code>Sophus::SE3f</code>",
+          "上一帧 → 当前帧的相对位姿",
+          { "cls": "own", "html": "Tracking 独占。只在 <code>Track()</code> 成功后被更新；<b>失败时保留旧值</b> —— 所以这里读到的也可能是过期的。" }
+        ],
+        [
+          "<code>mCurrentFrame.mvpMapPoints</code>",
+          "<code>std::vector&lt;MapPoint*&gt;</code>",
+          "长度恒为 N，元素为裸指针或 nullptr",
+          { "cls": "own", "html": "Tracking 独占，<b>长度不变</b>；内容是「清空 → 匹配填 → 剔外点清」三轮。" }
+        ],
+        [
+          "<code>MapPoint</code>",
+          "共享图元",
+          "世界坐标 + 观测列表 + 参考 KF + 跟踪标志位",
+          { "cls": "own", "html": "Atlas/Map 拥有；销毁走 <code>SetBadFlag()</code> 标记而非 delete。第 10 步在改它，LocalMapping 线程同时在读。" }
+        ],
+        [
+          "<code>mpAtlas</code> / <code>mSensor</code>",
+          "<code>Atlas*</code> / <code>eSensor</code>",
+          "全局地图状态；相机类型枚举",
+          { "cls": "own", "html": "只读。但它们决定了走哪条 return —— <b>同一个函数对不同传感器是完全不同的函数</b>。" }
+        ],
+        [
+          "<code>nmatches</code> / <code>nmatchesMap</code> / <code>mbVO</code>",
+          "<code>int</code> / <code>int</code> / <code>bool</code>",
+          "三个不同语义的计数：含外点的匹配数、扣完外点且有观测的内点数、是否在纯 VO 状态",
+          { "cls": "own", "html": "前两个纯局部；<code>mbVO</code> 是本对象的成员，跨帧存活，会改变下一帧走哪个分支。" }
+        ]
+      ]
+    },
+    {
+      "kind": "compare",
+      "title": "参考帧匹配 vs 运动模型预测：同一个目标，两种赌注",
+      "sub": "TrackReferenceKeyFrame 赌「地图里还认得你」，TrackWithMotionModel 赌「你还在按刚才的节奏动」。两页并排看，差别全在<b>用什么先验去缩小搜索空间</b>。",
+      "a": "TrackReferenceKeyFrame()<br><span style='font-weight:400;color:#6b7280'>Tracking.cc:2720–2779</span>",
+      "b": "TrackWithMotionModel()<br><span style='font-weight:400;color:#6b7280'>Tracking.cc:2854–2947</span>",
+      "rows": [
+        {
+          "aspect": "先验来源",
+          "a": "关键帧的 <code>mFeatVec</code>：词袋反查「哪些特征可能对上」",
+          "b": "预测位姿：<code>mVelocity * mLastFrame.GetPose()</code>",
+          "diff": true
+        },
+        {
+          "aspect": "搜索空间",
+          "a": "全图，按共同 word 分组（无序，靠描述子）",
+          "b": "投影点附近的像素窗口：<b>15px</b>（双目 7px），失败翻倍",
+          "diff": true
+        },
+        {
+          "aspect": "匹配判据",
+          "a": "描述子最近邻 + 比率 0.7 + 方向直方图",
+          "b": "投影位置 + 描述子，比率 <b>0.9</b>（更松，因为位置已约束）",
+          "diff": true
+        },
+        {
+          "aspect": "成立前提",
+          "a": "有参考 KF，且共视点足够多",
+          "b": "上一帧成功、速度还成立（连续运动假设）",
+          "diff": true
+        },
+        {
+          "aspect": "阈值链",
+          "a": "<b>15</b>（匹配数）→ <b>10</b>（内点数）",
+          "b": "<b>20</b> → 宽窗重试 <b>20</b> → <b>10</b>（VO 模式另有 <b>20</b>）",
+          "diff": true
+        },
+        {
+          "aspect": "数组写法",
+          "a": "整体赋值：<code>mvpMapPoints = vpMapPointMatches</code>",
+          "b": "<code>fill</code> 清空后原地填（长度不变）",
+          "diff": true
+        },
+        {
+          "aspect": "IMU 模式",
+          "a": "结尾无条件 <code>return true</code>",
+          "b": "开头 <code>PredictStateIMU()</code> 后立刻 <code>return true</code>，<b>根本不匹配</b>",
+          "diff": true
+        },
+        {
+          "aspect": "失败后谁接手",
+          "a": "上层切运动模型（Tracking.cc:1954 的反面）",
+          "b": "上层退回参考帧匹配（Tracking.cc:1955）",
+          "diff": true
+        },
+        {
+          "aspect": "最怕什么",
+          "a": "纹理重复、视角大跳变（词袋混淆）",
+          "b": "快速旋转、变速、遮挡后速度失效（预测跑偏）"
+        }
+      ],
+      "note": "两条路在同一次 <code>Track()</code> 里是<b>串联</b>的：先试运动模型，返回 false 再退回参考帧（1954–1955）。所以不是二选一，而是「快路 + 慢路」。"
+    },
+    {
+      "kind": "code",
+      "title": "源码：读写在哪一行",
+      "sub": "同一份代码，颜色只标「写 / 门 / 下钻」。扫一遍左边的色条，就知道这段函数改了谁、在哪停。<b>这就是「从上往下扫写操作」那个动作的可视化版本。</b>",
+      "file": "src/Tracking.cc",
+      "start": 2854,
+      "end": 2947,
+      "marks": {
+        "2856": "o",
+        "2860": "w",
+        "2862": "g",
+        "2865": "w",
+        "2866": "g",
+        "2870": "w",
+        "2876": "w",
+        "2882": "g",
+        "2884": "g",
+        "2886": "o",
+        "2889": "g",
+        "2892": "w",
+        "2894": "o",
+        "2899": "g",
+        "2903": "g",
+        "2905": "g",
+        "2909": "o",
+        "2921": "w",
+        "2922": "w",
+        "2923": "g",
+        "2924": "w",
+        "2927": "w",
+        "2929": "w",
+        "2930": "w",
+        "2932": "r",
+        "2933": "w",
+        "2939": "w",
+        "2940": "g",
+        "2943": "g",
+        "2946": "g"
+      },
+      "notes": {
+        "2862": "门 #0：IMU 一初始化，这里就直接返回，后面的匹配代码整段不走。",
+        "2876": "第一次清空：注意是原地清，不是换数组。",
+        "2882": "7 还是 15 —— 双目有深度，窗口可以小一半。",
+        "2889": "门 #1：20 个都凑不到就翻倍窗口再来；先清空是为了不让两次搜索的结果混在一起。",
+        "2903": "IMU 模式下这里 return true：匹配失败也算成功，位姿由后端兜。",
+        "2930": "外点被扣掉后 nmatches 变小，所以第 2940 行的 20 已经换了语义。",
+        "2940": "纯定位模式：mbVO 决定下一帧是走 2052 还是 2074。"
+      }
+    },
+    {
+      "kind": "table",
+      "title": "它在状态机里的位置",
+      "sub": "同一个 bool，被四个调用点用成四种意思。读之前先确认「谁在什么条件下调它」。",
+      "cols": [
+        { "label": "调用点", "width": "30%" },
+        { "label": "触发条件" },
+        { "label": "含义", "width": "24%" }
+      ],
+      "rows": [
+        [
+          "<code>Track()</code> OK 分支<br><span class='own'>Tracking.cc:1953</span>",
+          "<code>mbVelocity</code> 为真，或 IMU 已初始化，且不在重定位后的 2 帧内",
+          "常规帧的首选路径"
+        ],
+        [
+          "<code>Track()</code> OK 分支回退<br><span class='own'>Tracking.cc:1955</span>",
+          "上面那次返回 false",
+          "兜底：退回参考帧匹配"
+        ],
+        [
+          "<code>RECENTLY_LOST</code> 分支<br><span class='own'>Tracking.cc:2052</span>",
+          "<code>!mbVO</code> 且 <code>mbVelocity</code> 为真",
+          "刚丢一帧，先按速度猜一次"
+        ],
+        [
+          "<code>LOST</code> 且 <code>mbVO</code> 分支<br><span class='own'>Tracking.cc:2074</span>",
+          "上一帧主要靠 VO 点跟住的",
+          "与 <code>Relocalization()</code> 并行算，重定位成功就取重定位"
+        ]
+      ],
+      "note": "注意 1953 那次失败后，<b>同一帧</b>还会跑 1955 的参考帧匹配 —— 一次 <code>Track()</code> 里两个函数都可能被调用。这也是为什么两页必须并排读。"
+    },
+    {
+      "kind": "checklist",
+      "title": "读完自检",
+      "items": [
+        "第 3 步 <code>return true</code> 时，<code>mvpMapPoints</code> 里装的是什么？下一次谁会读这个数组，会不会读到上一帧的残留？",
+        "第 4 步如果 <code>mVelocity</code> 是上一次失败时留下的旧值，会怎样？谁负责让它失效？",
+        "第 7 步为什么是「先清空再重搜」，而不是「在已有结果上补搜」？不清空会多出什么类型的结果？",
+        "第 10 步 <code>nmatches--</code> 之后，第 11 步 <code>return nmatches &gt; 20</code> 的门槛，等价于优化前多少个匹配？这对纯定位模式意味着什么？",
+        "单目、刚初始化完的第一帧，<code>mbVelocity</code> 为假 —— 这一帧会进这个函数吗？由第几行决定？",
+        "如果 <code>mpAtlas-&gt;isImuInitialized()</code> 在跟踪过程中途变成 true，同一帧的行为会怎么变？"
+      ]
+    }
+  ]
+}

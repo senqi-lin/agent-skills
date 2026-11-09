@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>参考帧匹配 vs 运动模型预测 · 并排阅读</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --ink:#16181d; --muted:#6b7280; --line:#e3e6ec;
+    --read:#2563eb; --write:#b45309;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .bar{height:54px;display:flex;align-items:center;gap:16px;padding:0 20px;
+       background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  .bar .ttl{font-family:var(--mono);font-size:13.5px;font-weight:600;white-space:nowrap}
+  .bar .hint{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .grow{flex:1}
+  .bar .mode{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}
+  .bar .mode button{border:0;background:#fff;padding:5px 11px;font:inherit;font-size:12.5px;
+                    color:#4b5563;cursor:pointer}
+  .bar .mode button+button{border-left:1px solid var(--line)}
+  .bar .mode button.on{background:#eef2f7;color:#111827;font-weight:600}
+  .bar a{font-size:12.5px;color:var(--muted);text-decoration:none;flex:none}
+  .bar a:hover{color:var(--read)}
+  .pane{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 54px)}
+  .pane.one{grid-template-columns:1fr}
+  .pane.one[data-only="b"] .a{display:none}
+  .pane.one[data-only="a"] .b{display:none}
+  .cell{display:flex;flex-direction:column;min-width:0}
+  .cell.a{border-right:1px solid var(--line)}
+  .pane.one .cell.a{border-right:0}
+  .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+       padding:7px 14px;background:#fbfcfd;border-bottom:1px solid var(--line);font-weight:600}
+  .cell.a .lbl{color:var(--read)}
+  .cell.b .lbl{color:var(--write)}
+  iframe{border:0;flex:1;width:100%;min-height:0;background:var(--bg)}
+  @media (max-width:1080px){
+    .pane{grid-template-columns:1fr;height:auto}
+    .pane.one[data-only="b"] .a,.pane.one[data-only="a"] .b{display:none}
+    iframe{height:78vh}
+    .bar .hint{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="ttl">参考帧匹配 vs 运动模型预测</span>
+  <span class="hint">同一个 <code style="font-family:var(--mono)">Track()</code> 里的快路与慢路：先试运动模型，失败退回参考帧</span>
+  <span class="grow"></span>
+  <div class="mode" id="mode">
+    <button data-mode="two" class="on">并排</button>
+    <button data-mode="a">只看左</button>
+    <button data-mode="b">只看右</button>
+  </div>
+  <a href="../../README.md">README</a>
+</div>
+
+<div class="pane" id="pane" data-only="two">
+  <div class="cell a">
+    <div class="lbl">01 · TrackReferenceKeyFrame()</div>
+    <iframe src="01-track-reference-keyframe.html" title="TrackReferenceKeyFrame"></iframe>
+  </div>
+  <div class="cell b">
+    <div class="lbl">02 · TrackWithMotionModel()</div>
+    <iframe src="02-track-with-motion-model.html" title="TrackWithMotionModel"></iframe>
+  </div>
+</div>
+
+<script>
+  const pane = document.getElementById("pane");
+  document.getElementById("mode").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    for (const b of document.querySelectorAll("#mode button")) b.classList.toggle("on", b === btn);
+    const m = btn.dataset.mode;
+    pane.classList.toggle("one", m !== "two");
+    pane.dataset.only = m;
+  });
+</script>
+</body>
+</html>

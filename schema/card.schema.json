@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cpp-reading-card/schema/card.schema.json",
+  "title": "cpp-reading-card card",
+  "description": "一张函数阅读卡。meta 描述这个函数是什么，sections 按顺序描述怎么读它。",
+  "type": "object",
+  "required": ["meta", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["signature", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "pageTitle": { "type": "string", "description": "<title>，缺省用 signature" },
+        "eyebrow": { "type": "string", "description": "标题上方那行小字：项目 · 传感器 · 分支" },
+        "returnType": { "type": "string", "description": "如 bool；有则高亮显示在签名前" },
+        "signature": { "type": "string", "description": "如 Tracking::TrackWithMotionModel()" },
+        "summary": { "type": "string", "description": "一句话讲清这个函数干什么，允许 HTML" },
+        "badges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": {
+              "text": { "type": "string" },
+              "kind": { "enum": ["k", "r", "w", "g"], "description": "k 代码位置 / r 读 / w 写 / g 注意" }
+            }
+          }
+        },
+        "related": {
+          "type": "array",
+          "description": "相邻页面的跳转",
+          "items": {
+            "type": "object",
+            "required": ["href", "label"],
+            "additionalProperties": false,
+            "properties": { "href": { "type": "string" }, "label": { "type": "string" } }
+          }
+        },
+        "srcRoot": { "type": "string", "description": "源码根目录，相对本卡片文件；供 code 段落切片" },
+        "footer": { "type": "string", "description": "页脚说明，允许 HTML" },
+        "lang": { "type": "string", "default": "zh-CN" }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "title"],
+        "properties": {
+          "kind": { "enum": ["invariant", "lanes", "table", "compare", "gates", "code", "checklist"] },
+          "title": { "type": "string" },
+          "sub": { "type": "string", "description": "标题下的一句说明" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "const": "invariant" } } },
+            "then": {
+              "required": ["rows"],
+              "properties": {
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["label", "cells"],
+                    "properties": {
+                      "label": { "type": "string" },
+                      "cells": {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            { "type": "string" },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "text": { "type": "string" },
+                                "hi": { "type": "boolean", "description": "高亮：当前关注的那个下标" },
+                                "empty": { "type": "boolean", "description": "虚线空槽" }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "lanes" } } },
+            "then": {
+              "required": ["steps"],
+              "properties": {
+                "heads": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "string" } },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["call"],
+                    "properties": {
+                      "n": { "type": "integer", "description": "步骤号，缺省按顺序" },
+                      "kind": { "enum": ["normal", "gate", "opt"], "default": "normal" },
+                      "call": { "type": "string", "description": "这一步的代码，允许 HTML 加粗" },
+                      "body": { "type": "string", "description": "为什么这么写" },
+                      "tag": { "type": "string", "description": "返回值或契约，如 int nmatches" },
+                      "tagKind": { "enum": ["default", "ret"] },
+                      "read": { "type": "string", "description": "左列：这一步读了什么" },
+                      "write": { "type": "string", "description": "右列：这一步改了什么" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "table" } } },
+            "then": {
+              "required": ["cols", "rows"],
+              "properties": {
+                "cols": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["label"],
+                    "properties": { "label": { "type": "string" }, "width": { "type": "string" } }
+                  }
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        { "type": "string" },
+                        {
+                          "type": "object",
+                          "required": ["html"],
+                          "properties": { "html": { "type": "string" }, "cls": { "type": "string" } }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "compare" } } },
+            "then": {
+              "required": ["a", "b", "rows"],
+              "properties": {
+                "aspectLabel": { "type": "string", "default": "对照点" },
+                "a": { "type": "string", "description": "左列的标题，通常是 A 函数签名" },
+                "b": { "type": "string" },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["aspect", "a", "b"],
+                    "properties": {
+                      "aspect": { "type": "string" },
+                      "a": { "type": "string" },
+                      "b": { "type": "string" },
+                      "diff": { "type": "boolean", "description": "这一行是真正的行为差异，高亮" }
+                    }
+                  }
+                },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "gates" } } },
+            "then": {
+              "required": ["items"],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["value", "label"],
+                    "properties": {
+                      "value": { "type": "string", "description": "阈值本身，如 15 / 20 / 10" },
+                      "label": { "type": "string" },
+                      "desc": { "type": "string" },
+                      "tone": { "enum": ["warn", "ok"], "default": "warn" }
+                    }
+                  }
+                },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "code" } } },
+            "then": {
+              "required": ["start", "end"],
+              "properties": {
+                "file": { "type": "string", "description": "相对 srcRoot 的路径；缺省用 meta 上的" },
+                "start": { "type": "integer", "minimum": 1 },
+                "end": { "type": "integer", "minimum": 1 },
+                "marks": {
+                  "type": "object",
+                  "description": "行号 → 标记",
+                  "additionalProperties": { "enum": ["r", "w", "g", "o"] }
+                },
+                "notes": {
+                  "type": "object",
+                  "description": "行号 → 行下注释（HTML）",
+                  "additionalProperties": { "type": "string" }
+                }
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "checklist" } } },
+            "then": {
+              "required": ["items"],
+              "properties": { "items": { "type": "array", "items": { "type": "string" } } }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
