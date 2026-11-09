@@ -1,0 +1,36 @@
+{
+  "name": "cpp-reading-card",
+  "version": "0.1.0",
+  "description": "把大型 C++ 工程里的一个函数读成一张单文件 HTML 阅读卡：隐式输入输出、写入点、阈值、所有权、自检题",
+  "keywords": [
+    "cpp",
+    "code-reading",
+    "documentation",
+    "agent-skill",
+    "html"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "cpp-reading-card": "bin/cpp-reading-card.mjs"
+  },
+  "files": [
+    "bin",
+    "assets",
+    "schema",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "render:orb": "node bin/cpp-reading-card.mjs examples/orb-slam3/02-track-with-motion-model.json",
+    "check": "node tools/check-html.mjs examples/orb-slam3/02-track-with-motion-model.html"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/senqi-lin/cpp-reading-card.git"
+  }
+}

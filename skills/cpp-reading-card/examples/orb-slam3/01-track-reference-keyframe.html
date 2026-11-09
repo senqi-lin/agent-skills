@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TrackReferenceKeyFrame() 数据流图 · ORB-SLAM3</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#16181d; --muted:#6b7280;
+    --line:#e3e6ec; --read:#2563eb; --write:#b45309; --gate:#c2410c;
+    --opt:#7c3aed; --ok:#0f766e; --mono:ui-monospace,"Cascadia Mono",Consolas,"SF Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.65 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:44px 28px 72px}
+
+  /* ---------- hero ---------- */
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  h1{font-family:var(--mono);font-size:26px;font-weight:600;margin:10px 0 8px;letter-spacing:-.01em}
+  h1 .tok{color:var(--ok)}
+  .lede{font-size:15.5px;color:#3f4550;margin:0 0 18px;max-width:74ch}
+  .lede b{color:var(--ink)}
+  .badges{display:flex;flex-wrap:wrap;gap:8px}
+  .badge{font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);
+         background:#fff;color:#3f4550}
+  .badge.k{font-family:var(--mono);font-size:12px}
+  .badge.r{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
+  .badge.w{border-color:#fcd9b6;background:#fff7ed;color:#b45309}
+  .badge.g{border-color:#f5c6b0;background:#fef2ee;color:#c2410c}
+
+  /* ---------- section ---------- */
+  section{margin-top:44px}
+  h2{font-size:17px;margin:0 0 6px;letter-spacing:.01em}
+  h2 .n{font-family:var(--mono);color:var(--muted);font-weight:500;margin-right:8px}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+
+  /* ---------- invariant strip ---------- */
+  .inv{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px 24px}
+  .inv-row{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .inv-row:last-child{margin-bottom:0}
+  .inv-label{width:190px;flex:none;font-family:var(--mono);font-size:12.5px;color:#374151;text-align:right}
+  .slots{display:flex;gap:5px;flex:1;align-items:center}
+  .slot{flex:1;height:34px;border:1px solid var(--line);border-radius:7px;background:#fafbfc;
+        display:flex;align-items:center;justify-content:center;font-family:var(--mono);
+        font-size:11px;color:#9aa1ad;min-width:0}
+  .slot.hi{border-color:var(--read);background:#eff6ff;color:#1d4ed8;font-weight:600}
+  .slot.null{border-style:dashed;color:#b6bcc6}
+  .inv-note{font-size:13px;color:var(--muted);margin:14px 0 0;padding-top:14px;border-top:1px dashed var(--line)}
+  .inv-note b{color:var(--gate)}
+
+  /* ---------- lanes ---------- */
+  .lanes-head{display:grid;grid-template-columns:1fr 1.75fr 1fr;gap:16px;margin-bottom:10px;
+              font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .lanes-head span:nth-child(1){text-align:right;color:var(--read)}
+  .lanes-head span:nth-child(3){color:var(--write)}
+  .row{display:grid;grid-template-columns:1fr 1.75fr 1fr;gap:16px;align-items:start}
+  .cell{padding-top:2px}
+  .cell.read{text-align:right}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px 14px 52px;
+        position:relative;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .num{position:absolute;left:14px;top:14px;width:24px;height:24px;border-radius:50%;
+       background:#eef1f6;color:#4b5563;display:flex;align-items:center;justify-content:center;
+       font-family:var(--mono);font-size:12px;font-weight:600}
+  .call{font-family:var(--mono);font-size:13px;color:#111827;word-break:break-word}
+  .call .f{color:var(--opt);font-weight:600}
+  .card p{margin:6px 0 0;font-size:13.2px;color:#4b5563;line-height:1.55}
+  .card p .code{font-family:var(--mono);font-size:12.2px;background:#f3f4f6;padding:1px 5px;border-radius:4px;color:#1f2937}
+  .card.gate{border-color:#f5c6b0;background:#fffaf7}
+  .card.gate .num{background:#fee2d5;color:#c2410c}
+  .card.opt{border-color:#ddd0f7;background:#fbf8ff}
+  .card.opt .num{background:#ede4fd;color:#6d28d9}
+  .tag{display:inline-block;margin-top:8px;font-size:11.5px;padding:2px 8px;border-radius:999px;
+       background:#f3f4f6;color:#4b5563;font-family:var(--mono)}
+  .tag.ret{background:#e7f5f2;color:#0f766e}
+  .arrow{text-align:center;color:#c3c8d1;font-size:13px;line-height:1;padding:6px 0}
+  .side{font-size:12.8px;line-height:1.55;color:#4b5563}
+  .side code{font-family:var(--mono);font-size:12px;background:#fff;border:1px solid var(--line);
+             padding:1px 5px;border-radius:4px;color:#1f2937;word-break:break-all}
+  .side .dim{color:#9aa1ad}
+  .side .r{color:var(--read)}
+  .side .w{color:var(--write)}
+  .side hr{border:0;border-top:1px dashed #e5e7eb;margin:8px 0}
+
+  /* ---------- table ---------- */
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+        border-radius:12px;overflow:hidden;font-size:13.2px}
+  th,td{padding:10px 14px;text-align:left;border-bottom:1px solid #eef0f4;vertical-align:top}
+  th{background:#fafbfc;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:0}
+  td code,.mono{font-family:var(--mono);font-size:12.2px;color:#1f2937}
+  .own{color:var(--muted);font-size:12.5px}
+
+  /* ---------- thresholds ---------- */
+  .thr{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .thr .card{padding-left:16px}
+  .thr .big{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1}
+  .thr .card.a .big{color:var(--gate)}
+  .thr .card.b .big{color:var(--ok)}
+  .thr .cap{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+  /* ---------- checklist ---------- */
+  ol.q{margin:0;padding-left:20px;color:#374151;font-size:14px}
+  ol.q li{margin:7px 0}
+  ol.q code{font-family:var(--mono);font-size:12.4px;background:#fff;border:1px solid var(--line);
+            padding:1px 6px;border-radius:4px}
+  footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">ORB-SLAM3 · MONOCULAR · 正常跟踪第一条分支</div>
+    <h1><span class="tok">bool</span> Tracking::TrackReferenceKeyFrame()</h1>
+    <p class="lede">
+      一句话：<b>把参考关键帧上的地图点，用 BoW 匹配搬到当前帧的像素槽位，只解一个位姿，再数还剩多少个点。</b>
+      它不创建任何东西，只做「读旧地图 → 写当前帧」。
+    </p>
+    <div class="badges">
+      <span class="badge k">src/Tracking.cc:2720–2779</span>
+      <span class="badge r">显式输入：无（void）</span>
+      <span class="badge w">显式输出：bool</span>
+      <span class="badge g">隐式 I/O：3 个成员 + 全局地图对象</span>
+    </div>
+  </header>
+
+  <!-- 1. 不变量 -->
+  <section>
+    <h2><span class="n">01</span>先记住这个不变量：<code class="mono">i</code> 是三条平行数组的联合索引</h2>
+    <p class="sub">Frame 把「像素 / 描述子 / 地图点」拆成三个等长数组，靠同一个下标 i 关联。所有匹配函数都在写第三个数组。</p>
+
+    <div class="inv">
+      <div class="inv-row">
+        <div class="inv-label">mvKeysUn[i]<span class="dim"></span></div>
+        <div class="slots">
+          <div class="slot">0</div><div class="slot">1</div><div class="slot">2</div>
+          <div class="slot hi">i = 3</div>
+          <div class="slot">4</div><div class="slot">5</div><div class="slot">…</div>
+        </div>
+      </div>
+      <div class="inv-row">
+        <div class="inv-label">mDescriptors.row(i)</div>
+        <div class="slots">
+          <div class="slot">d₀</div><div class="slot">d₁</div><div class="slot">d₂</div>
+          <div class="slot hi">d₃</div>
+          <div class="slot">d₄</div><div class="slot">d₅</div><div class="slot">…</div>
+        </div>
+      </div>
+      <div class="inv-row">
+        <div class="inv-label">mvpMapPoints[i]</div>
+        <div class="slots">
+          <div class="slot null">·</div><div class="slot null">·</div><div class="slot">MP42</div>
+          <div class="slot hi">MP17</div>
+          <div class="slot null">·</div><div class="slot">MP88</div><div class="slot">…</div>
+        </div>
+      </div>
+      <p class="inv-note">
+        长度恒为 <b>N</b>（本帧特征数）。<code class="mono">SearchByBoW</code> 第一件事就是 <code class="mono">vpMapPointMatches = vector&lt;MapPoint*&gt;(F.N, NULL)</code>（ORBmatcher.cc:227）——
+        正是这一步保证了它能被直接赋值给 <code class="mono">mCurrentFrame.mvpMapPoints</code>。数组长度一旦不一致，代码不报错，只会静默错位。
+      </p>
+    </div>
+  </section>
+
+  <!-- 2. 主图 -->
+  <section>
+    <h2><span class="n">02</span>调用链 × 隐式数据流</h2>
+    <p class="sub">中间是实际执行顺序（8 步），左边是这一步读了什么，右边是它改了什么。<b>读/写两列才是这个函数的真实签名。</b></p>
+
+    <div class="lanes-head"><span>读（隐式输入）</span><span>调用链</span><span>写（隐式输出）</span></div>
+
+    <!-- 1 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>mCurrentFrame.mDescriptors</code>
+        <div class="dim">256 bit × N 的 cv::Mat</div>
+      </div>
+      <div class="cell">
+        <div class="card">
+          <div class="num">1</div>
+          <div class="call">mCurrentFrame.<b>ComputeBoW</b>()</div>
+          <p>把描述子量化成词袋：<span class="code">mBowVec</span>（词→权重）、<span class="code">mFeatVec</span>（词→特征索引列表）。<br>关键帧是建 KF 时算一次；帧则每帧重算。</p>
+          <span class="tag">void 无返回</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>mCurrentFrame.mBowVec</code><br>
+        <code>mCurrentFrame.mFeatVec</code>
+        <div class="dim">DBoW2::FeatureVector = map&lt;WordId, vector&lt;uint&gt;&gt;</div>
+      </div>
+    </div>
+
+    <!-- 2 -->
+    <div class="row">
+      <div class="cell read side">
+        <span class="dim">无（纯构造，栈对象）</span>
+      </div>
+      <div class="cell">
+        <div class="card">
+          <div class="num">2</div>
+          <div class="call">ORBmatcher matcher(<b>0.7</b>, <b>true</b>)</div>
+          <p>0.7 = 最近邻比率检验阈值；true = 启用旋转一致性直方图。整个对象只活在这次调用栈上。</p>
+          <span class="tag">栈对象，析构无副作用</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <span class="dim">无</span>
+      </div>
+    </div>
+
+    <!-- 3 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>mpReferenceKF</code><span class="dim">（KeyFrame*）</span><br>
+        <div class="dim">→ mFeatVec / mDescriptors / mVpMapPoints</div>
+        <hr>
+        <code>mCurrentFrame.mFeatVec</code>
+      </div>
+      <div class="cell">
+        <div class="card">
+          <div class="num">3</div>
+          <div class="call">matcher.<b>SearchByBoW</b>(mpReferenceKF, mCurrentFrame, vpMapPointMatches)</div>
+          <p>按共同 word 分组，组内做描述子最近邻 + 比率检验；再用方向直方图剔掉旋转不一致的匹配。<br>输出数组<b>先按 F.N 全置空</b>，再逐槽填点。</p>
+          <span class="tag">int nmatches</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>vpMapPointMatches</code>
+        <div class="dim">vector&lt;MapPoint*&gt;，长度 = N，元素可空</div>
+      </div>
+    </div>
+
+    <!-- 4 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>nmatches</code>
+      </div>
+      <div class="cell">
+        <div class="card gate">
+          <div class="num">4</div>
+          <div class="call">if (nmatches &lt; <b>15</b>) return false;</div>
+          <p>门 #1：连 15 个匹配都没有，就不值得花 PnP 的钱。这是<b>匹配数</b>，还没经过优化筛选。</p>
+          <span class="tag">返回 false → 上层切运动模型</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>return false</code>
+        <div class="dim">当前帧的 mvpMapPoints 仍保持上一帧残留，不清空</div>
+      </div>
+    </div>
+
+    <!-- 5 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>mLastFrame.GetPose()</code>
+        <div class="dim">Sophus::SE3f，可能已被 UpdateLastFrame 用 Tlr·pRef 修正过</div>
+      </div>
+      <div class="cell">
+        <div class="card">
+          <div class="num">5</div>
+          <div class="call">mCurrentFrame.<b>mvpMapPoints</b> = vpMapPointMatches;<br>mCurrentFrame.<b>SetPose</b>(mLastFrame.GetPose());</div>
+          <p>把匹配结果整体搬进帧结构，并<b>用上一帧位姿当 PnP 初值</b>。<br>为什么能直接赋值：两边长度都是 N，且语义相同（下标即特征号）。</p>
+          <span class="tag">隐式契约：长度一致</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>mCurrentFrame.mvpMapPoints</code><br>
+        <code>mCurrentFrame.mTcw</code>
+      </div>
+    </div>
+
+    <!-- 6 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>mCurrentFrame.mvpMapPoints</code><br>
+        <div class="dim">→ 每个 MapPoint 的世界坐标</div>
+        <hr>
+        <code>mvKeysUn</code><span class="dim"> 像素</span><br>
+        <code>mvInvLevelSigma2</code><span class="dim"> 金字塔尺度权重</span>
+      </div>
+      <div class="cell">
+        <div class="card opt">
+          <div class="num">6</div>
+          <div class="call">Optimizer::<b>PoseOptimization</b>(&amp;mCurrentFrame)</div>
+          <p>g2o：<b>只有一个</b>位姿顶点（6 DoF，不固定），地图点当作常量；Huber 鲁棒核，多轮迭代把大残差的观测标成外点。<br>不动地图点的坐标 —— 所以尺度完全由旧地图决定。</p>
+          <span class="tag ret">返回 nInitialCorrespondences − nBad，被丢弃</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>mCurrentFrame.mTcw</code><span class="dim">（覆盖写）</span><br>
+        <code>mCurrentFrame.mvbOutlier[i]</code>
+      </div>
+    </div>
+
+    <!-- 7 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>mvpMapPoints[i]</code><br>
+        <code>mvbOutlier[i]</code><br>
+        <code>pMP-&gt;Observations()</code>
+      </div>
+      <div class="cell">
+        <div class="card">
+          <div class="num">7</div>
+          <div class="call">for i in [0,N): 清外点 + 计数</div>
+          <p>外点：槽位置 NULL、<span class="code">mvbOutlier[i]=false</span>、重置 <span class="code">mbTrackInView</span>、记 <span class="code">mnLastFrameSeen</span>。<br>内点且 <span class="code">Observations()&gt;0</span>（点还没被地图剔除）→ <span class="code">nmatchesMap++</span>。</p>
+          <span class="tag">副作用跨出本函数：写到全局 MapPoint</span>
+        </div>
+        <div class="arrow">▼</div>
+      </div>
+      <div class="cell write side">
+        <code>mCurrentFrame.mvpMapPoints[i] = NULL</code><br>
+        <code>mvbOutlier[i] = false</code><br>
+        <code>pMP-&gt;mbTrackInView</code><br>
+        <code>pMP-&gt;mnLastFrameSeen</code>
+        <div class="dim">nmatches-- / nmatchesMap++</div>
+      </div>
+    </div>
+
+    <!-- 8 -->
+    <div class="row">
+      <div class="cell read side">
+        <code>nmatchesMap</code><br>
+        <code>mSensor</code>
+      </div>
+      <div class="cell">
+        <div class="card gate">
+          <div class="num">8</div>
+          <div class="call">return (nmatchesMap &gt;= <b>10</b>);</div>
+          <p>门 #2：优化之后还剩至少 10 个「有地图观测的内点」，这一帧才算跟住。<br>IMU 模式下无条件 return true —— 位姿交给后端融合。</p>
+          <span class="tag ret">bool 的语义 = 这帧还能不能算成功跟踪</span>
+        </div>
+      </div>
+      <div class="cell write side">
+        <code>return bool</code>
+        <div class="dim">上层 mState 可能变 RECENTLY_LOST</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 类型表 -->
+  <section>
+    <h2><span class="n">03</span>对象与类型：谁拥有、活多久</h2>
+    <p class="sub">「数据类型」只是表面，真正决定能不能乱改的是<b>所有权</b>。同一行指针，有的可以随意动，有的动了别的线程会崩。</p>
+    <table>
+      <thead>
+        <tr><th style="width:22%">标识符</th><th style="width:26%">声明</th><th style="width:30%">实际类型 / 形态</th><th>所有权 · 生命周期</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>mCurrentFrame</code> <code>mLastFrame</code></td>
+          <td><code>Frame</code> 值成员</td>
+          <td>每帧一整份拷贝（特征、描述子、BoW、位姿、点数组）</td>
+          <td class="own">Tracking 独占。这里改的都是自己的一份，安全。</td>
+        </tr>
+        <tr>
+          <td><code>mpReferenceKF</code></td>
+          <td><code>KeyFrame*</code></td>
+          <td>指向 Atlas 里某个 KF；取「与当前帧共视点最多」的那个</td>
+          <td class="own">Atlas/Map 拥有。<b>LocalMapping 线程同时在改它</b>，所以只能读（且多数 getter 内部加锁）。</td>
+        </tr>
+        <tr>
+          <td><code>vpMapPointMatches</code></td>
+          <td><code>std::vector&lt;MapPoint*&gt;</code></td>
+          <td>长度 = N，元素 = 裸指针或 nullptr</td>
+          <td class="own">不拥有。<b>数组本身是局部的</b>，指针指向的对象活得比它久。</td>
+        </tr>
+        <tr>
+          <td><code>MapPoint</code></td>
+          <td>共享图元</td>
+          <td>世界坐标 + 观测列表 + 参考 KF + 跟踪标志位</td>
+          <td class="own">Atlas/Map 拥有；销毁走 <code>SetBadFlag()</code> 标记，不 delete。第 7 步在改它 —— 跨函数副作用。</td>
+        </tr>
+        <tr>
+          <td><code>nmatches</code> / <code>nmatchesMap</code></td>
+          <td><code>int</code></td>
+          <td>两个语义完全不同的计数：前者含外点，后者只数活点</td>
+          <td class="own">纯局部。别混用 —— 这是本题最容易读错的地方。</td>
+        </tr>
+        <tr>
+          <td><code>matcher</code></td>
+          <td><code>ORBmatcher</code> 栈对象</td>
+          <td>两个配置字段（比率、方向检查），无状态</td>
+          <td class="own">函数结束即析构，无副作用。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. 两道门 -->
+  <section>
+    <h2><span class="n">04</span>为什么中间必须夹一次优化：15 与 10 不是一回事</h2>
+    <div class="thr">
+      <div class="card a" style="padding-left:16px">
+        <div class="big">15</div>
+        <div class="cap"><b>匹配数</b>（SearchByBoW 输出，含错配与外点）<br>作用：够不够启动 PnP。粗筛。</div>
+      </div>
+      <div class="card b" style="padding-left:16px">
+        <div class="big">10</div>
+        <div class="cap"><b>优化后仍有效的内点数</b>（还要求 <code class="mono">Observations()&gt;0</code>）<br>作用：位姿是不是真的可信。精筛。</div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:14px">
+      如果只有 15 这一道门，一堆纹理重复的错配也能凑够数，位姿会被拖歪；如果只有 10 这一道门，错配太多会让优化本身收敛到错误局部极小。
+      <b>粗筛保证解算有输入，精筛保证解算能验伪。</b>
+    </p>
+  </section>
+
+  <!-- 5. 上下文 -->
+  <section>
+    <h2><span class="n">05</span>它在状态机里的位置</h2>
+    <p class="sub">同一个函数名，在不同上下文的含义不同 —— 阅读时先确认「谁在什么条件下调它」。</p>
+    <table>
+      <thead><tr><th style="width:30%">调用点</th><th>触发条件</th><th style="width:26%">含义</th></tr></thead>
+      <tbody>
+        <tr><td><code>Tracking::Track()</code> OK 分支<br><span class="own">Tracking.cc:1948/1955</span></td>
+            <td><code>mbVelocity == false</code>（刚初始化完、刚重定位）或运动模型失败后</td>
+            <td>第一帧跟踪 / 兜底</td></tr>
+        <tr><td><code>RECENTLY_LOST</code> 分支<br><span class="own">Tracking.cc:2056</span></td>
+            <td>上一帧跟丢，先在参考 KF 上试一次重定位</td>
+            <td>轻量重定位</td></tr>
+      </tbody>
+    </table>
+    <p class="sub" style="margin-top:12px">
+      注意 <code class="mono">TrackReferenceKeyFrame</code> 只在 <b>OK / RECENTLY_LOST</b> 下被调用；
+      <code class="mono">TrackWithMotionModel</code> 需要 <code class="mono">mVelocity</code> 为真，所以初始化后第一帧一定走这里 ——
+      正好是上一轮你读到的 <code class="mono">mbVelocity = false</code> 的后果。
+    </p>
+  </section>
+
+  <!-- 6. 自检 -->
+  <section>
+    <h2><span class="n">06</span>读完自检</h2>
+    <ol class="q">
+      <li>为什么第 5 步可以直接 <code>mCurrentFrame.mvpMapPoints = vpMapPointMatches</code> 而不逐元素拷贝？（提示：看 ORBmatcher.cc:227）</li>
+      <li>第 6 步的返回值为什么被丢弃？如果用它来判失败，会和多此一举的第 8 步冲突吗？</li>
+      <li>第 7 步为什么要写 <code>pMP-&gt;mbTrackInView = false</code>？这个标志位是谁在什么时候置真的？</li>
+      <li>把第 6 步挪到第 4 步之前会怎样？（想象匹配数 15 但几乎全是错配）</li>
+      <li>如果 <code>mpReferenceKF</code> 在优化期间被 LocalMapping 标成 bad，这段代码会发生什么？</li>
+    </ol>
+  </section>
+
+  <footer>
+    行号基于 <span class="mono">D:\Projects\ORB_SLAM3</span> 当前副本；<span class="mono">pwsh</span> 因沙箱文件权限不可用，本页为纯静态 HTML，直接双击用浏览器打开。
+  </footer>
+</div>
+</body>
+</html>
